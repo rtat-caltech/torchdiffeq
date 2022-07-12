@@ -60,7 +60,7 @@ class OdeintAdjointMethod(torch.autograd.Function):
             ##################################
             #      Set up initial state      #
             ##################################
-
+            
             # [-1] because y and grad_y are both of shape (len(t), *y0.shape)
             aug_state = [torch.zeros((), dtype=y.dtype, device=y.device), y[-1], grad_y[-1]]  # vjp_t, y, vjp_y
             aug_state.extend([torch.zeros_like(param) for param in adjoint_params])  # vjp_params
@@ -77,16 +77,17 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_y = y_aug[2]
                 # ignore gradients wrt time and parameters
 
-                with torch.enable_grad():
+                with torch.enable_grad():                    
                     t_ = t.detach()
                     t = t_.requires_grad_(True)
+
                     y = y.detach().requires_grad_(True)
 
                     # If using an adaptive solver we don't want to waste time resolving dL/dt unless we need it (which
                     # doesn't necessarily even exist if there is piecewise structure in time), so turning off gradients
                     # wrt t here means we won't compute that if we don't need it.
-                    func_eval = func(t if t_requires_grad else t_, y)
-
+                    func_eval = func(t.detach(), y)
+                    
                     # Workaround for PyTorch bug #39784
                     _t = torch.as_strided(t, (), ())  # noqa
                     _y = torch.as_strided(y, (), ())  # noqa
@@ -102,6 +103,8 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 vjp_y = torch.zeros_like(y) if vjp_y is None else vjp_y
                 vjp_params = [torch.zeros_like(param) if vjp_param is None else vjp_param
                               for param, vjp_param in zip(adjoint_params, vjp_params)]
+
+                vjp_t = vjp_t.to(vjp_y.dtype)
 
                 return (vjp_t, func_eval, vjp_y, *vjp_params)
 
@@ -141,6 +144,8 @@ class OdeintAdjointMethod(torch.autograd.Function):
 
             adj_y = aug_state[2]
             adj_params = aug_state[3:]
+
+            adj_params = tuple(a.to(b.dtype) for a, b in zip(adj_params, adjoint_params))
 
         return (None, None, adj_y, time_vjps, None, None, None, None, None, None, None, None, None, None, *adj_params)
 

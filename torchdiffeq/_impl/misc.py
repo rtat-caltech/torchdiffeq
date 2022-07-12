@@ -16,7 +16,7 @@ def _linf_norm(tensor):
 
 
 def _rms_norm(tensor):
-    return tensor.pow(2).mean().sqrt()
+    return torch.linalg.norm(tensor)
 
 
 def _zero_norm(tensor):
@@ -52,19 +52,18 @@ def _select_initial_step(func, t0, y0, order, rtol, atol, norm, f0=None):
 
     d0 = norm(y0 / scale)
     d1 = norm(f0 / scale)
-
     if d0 < 1e-5 or d1 < 1e-5:
-        h0 = torch.tensor(1e-6, dtype=dtype, device=device)
+        h0 = torch.tensor(1e-6, dtype=t_dtype, device=device)
     else:
         h0 = 0.01 * d0 / d1
 
     y1 = y0 + h0 * f0
     f1 = func(t0 + h0, y1)
 
-    d2 = norm((f1 - f0) / scale) / h0
+    d2 = norm((f1 - f0) / scale / h0)
 
     if d1 <= 1e-15 and d2 <= 1e-15:
-        h1 = torch.max(torch.tensor(1e-6, dtype=dtype, device=device), h0 * 1e-3)
+        h1 = torch.max(torch.tensor(1e-6, dtype=t_dtype, device=device), h0 * 1e-3)
     else:
         h1 = (0.01 / max(d1, d2)) ** (1. / float(order + 1))
 
@@ -176,7 +175,8 @@ class _PerturbFunc(torch.nn.Module):
         # This dtype change here might be buggy.
         # The exact time value should be determined inside the solver,
         # but this can slightly change it due to numerical differences during casting.
-        t = t.to(y.dtype)
+        #t = t.to(y.dtype)
+        
         if perturb is Perturb.NEXT:
             # Replace with next smallest representable value.
             t = _nextafter(t, t + 1)
@@ -186,6 +186,7 @@ class _PerturbFunc(torch.nn.Module):
         else:
             # Do nothing.
             pass
+        
         return self.base_func(t, y)
 
 
@@ -210,7 +211,7 @@ def _check_inputs(func, y0, t, rtol, atol, method, options, event_fn, SOLVERS):
         func = _TupleFunc(func, shapes)
         if event_fn is not None:
             event_fn = _TupleInputOnlyFunc(event_fn, shapes)
-    _assert_floating('y0', y0)
+    #_assert_floating('y0', y0)
 
     # Normalise method and options
     if options is None:
